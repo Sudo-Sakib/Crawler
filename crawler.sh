@@ -38,7 +38,12 @@ check_dependencies() {
                     exit 1
                     ;;
             esac
-            export PATH=$PATH:$(go env GOPATH)/bin
+            BIN_PATH="$(go env GOPATH)/bin/$tool"
+            if [ -f "$BIN_PATH" ]; then
+                echo -e "${GREEN}[+] Moving $tool to /usr/local/bin...${NC}"
+                sudo cp "$BIN_PATH" /usr/local/bin/
+                sudo chmod +x /usr/local/bin/$tool
+            fi
             if ! command -v "$tool" &>/dev/null; then
                 echo -e "${RED}[-] Failed to install $tool. Please install manually.${NC}"
                 exit 1
