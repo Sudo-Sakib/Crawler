@@ -37,7 +37,7 @@ check_dependencies() {
                     go install github.com/edoardottt/cariddi/cmd/cariddi@latest
                     ;;
                 uro)
-                    pip3 install uro >/dev/null 2>&1 || { echo -e "${RED}[-] Failed to install uro. Please install manually.${NC}"; exit 1; }
+                    pipx install uro >/dev/null 2>&1 || { echo -e "${RED}[-] Failed to install uro. Please install manually.${NC}"; exit 1; }
                     continue
                     ;;
                 *)
@@ -77,7 +77,7 @@ load_marker() {
 run_gau() {
     if ! load_marker "gau-$1"; then
         echo -e "${GREEN}[+] Running GAU for $1...${NC}"
-        gau "$1" > "$output_dir/gau_$1.txt" 2>/dev/null &
+        echo "$1" | gau | tee -a "$output_dir/gau_$1.txt" >/dev/null &
         save_marker "gau-$1"
     fi
 }
@@ -86,7 +86,7 @@ run_gau() {
 run_gauplus() {
     if ! load_marker "gauplus-$1"; then
         echo -e "${GREEN}[+] Running Gauplus for $1...${NC}"
-        gauplus "$1" > "$output_dir/gauplus_$1.txt" 2>/dev/null &
+        echo "$1" | gauplus | tee -a "$output_dir/gauplus_$1.txt" >/dev/null &
         save_marker "gauplus-$1"
     fi
 }
@@ -108,7 +108,7 @@ run_cariddi() {
 
     if ! load_marker "$flag"; then
         echo -e "${GREEN}[+] Running Cariddi ($flag)...${NC}"
-        cat "$input" | cariddi | grep http > "$output"
+        cat "$input" | cariddi | grep http | tee -a "$output" >/dev/null
         save_marker "$flag"
     fi
 }
