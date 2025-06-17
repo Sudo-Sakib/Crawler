@@ -123,7 +123,7 @@ merge_outputs() {
 # Run uro
 run_uro() {
     echo -e "${GREEN}[+] Running uro on merged URLs...${NC}"
-    uro "$output_dir/merged_urls.txt" > "$output_dir/unique_urls.txt"
+    uro -i "$output_dir/merged_urls.txt" -o "$output_dir/unique_urls.txt"
     echo -e "${GREEN}[+] Cleaned URLs saved to $output_dir/unique_urls.txt${NC}"
 }
 
