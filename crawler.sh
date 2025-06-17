@@ -1,77 +1,105 @@
 #!/bin/bash
 
-# Color
+# Colors
 GREEN="\e[0;32m"
 RED="\e[0;31m"
 NC="\e[0m"
 
-# Tools required
+# Required tools
 REQUIRED_TOOLS=(gauplus katana cariddi)
 
-# Check dependencies and install if missing
+# Check and install Go if missing
+check_go() {
+    if ! command -v go &>/dev/null; then
+        echo -e "${RED}[!] Golang is not installed. Please install Go first from https://go.dev/dl/${NC}"
+        exit 1
+    fi
+}
+
+# Install dependencies if missing
 check_dependencies() {
+    check_go
     for tool in "${REQUIRED_TOOLS[@]}"; do
-        if ! command -v "$tool" &> /dev/null; then
-            echo -e "${RED}[!] $tool is not installed. Installing...${NC}"
-            if ! go install github.com/projectdiscovery/$tool@latest 2>/dev/null; then
-                echo -e "${RED}[-] Failed to install $tool. Please install it manually.${NC}"
-                exit 1
-            fi
+        if ! command -v "$tool" &>/dev/null; then
+            echo -e "${RED}[!] $tool is not installed.${NC}"
+            echo -e "${GREEN}[+] Installing $tool...${NC}"
+            case "$tool" in
+                gauplus)
+                    go install github.com/bp0lr/gauplus@latest
+                    ;;
+                katana)
+                    go install github.com/projectdiscovery/katana/cmd/katana@latest
+                    ;;
+                cariddi)
+                    go install github.com/edoardottt/cariddi/cmd/cariddi@latest
+                    ;;
+                *)
+                    echo -e "${RED}[-] Unknown tool: $tool. Please install manually.${NC}"
+                    exit 1
+                    ;;
+            esac
             export PATH=$PATH:$(go env GOPATH)/bin
+            if ! command -v "$tool" &>/dev/null; then
+                echo -e "${RED}[-] Failed to install $tool. Please install manually.${NC}"
+                exit 1
+            else
+                echo -e "${GREEN}[+] Successfully installed $tool.${NC}"
+            fi
         else
-            echo -e "${GREEN}[+] $tool is installed.${NC}"
+            echo -e "${GREEN}[+] $tool is already installed.${NC}"
         fi
     done
 }
 
-# Save resume marker
+# Save completed step
 save_marker() {
-    echo "$1" >> "$output_dir"/.resume_marker
+    echo "$1" >> "$output_dir/.resume_marker"
 }
 
-# Load resume markers
+# Check if step has been completed
 load_marker() {
-    grep "$1" "$output_dir"/.resume_marker 2>/dev/null
+    grep -q "$1" "$output_dir/.resume_marker" 2>/dev/null
 }
 
-# Run Gauplus
+# Gauplus execution
 run_gauplus() {
-    if ! load_marker "gauplus"; then
-        echo -e "${GREEN}[+] Running Gauplus...${NC}"
-        gauplus "$1" > "$output_dir/gauplus.txt"
-        save_marker "gauplus"
+    if ! load_marker "gauplus-$1"; then
+        echo -e "${GREEN}[+] Running Gauplus for $1...${NC}"
+        gauplus "$1" > "$output_dir/gauplus_$1.txt" 2>/dev/null
+        save_marker "gauplus-$1"
     fi
 }
 
-# Run Katana
+# Katana execution
 run_katana() {
-    if ! load_marker "katana"; then
-        echo -e "${GREEN}[+] Running Katana...${NC}"
-        echo "https://$1" | katana -silent > "$output_dir/katana.txt"
-        save_marker "katana"
+    if ! load_marker "katana-$1"; then
+        echo -e "${GREEN}[+] Running Katana for $1...${NC}"
+        echo "https://$1" | katana -silent > "$output_dir/katana_$1.txt" 2>/dev/null
+        save_marker "katana-$1"
     fi
 }
 
-# Run Cariddi
+# Cariddi execution
 run_cariddi() {
     local input=$1
-    local outfile=$2
+    local output=$2
     local flag=$3
 
     if ! load_marker "$flag"; then
         echo -e "${GREEN}[+] Running Cariddi ($flag)...${NC}"
-        cat "$input" | cariddi | grep http > "$outfile"
+        cat "$input" | cariddi | grep http > "$output"
         save_marker "$flag"
     fi
 }
 
-# Merge all outputs
+# Merge output files
 merge_outputs() {
-    cat "$output_dir"/*.txt | sort -u > "$output_dir/merged_urls.txt"
+    echo -e "${GREEN}[+] Merging all output files...${NC}"
+    find "$output_dir" -type f -name "*.txt" ! -name "merged_urls.txt" ! -name ".resume_marker" -exec cat {} + | sort -u > "$output_dir/merged_urls.txt"
     echo -e "${GREEN}[+] Merged output saved to $output_dir/merged_urls.txt${NC}"
 }
 
-# Trap Ctrl+C to allow resume
+# Trap CTRL+C
 trap 'echo -e "\n${RED}[!] Interrupted. Resume later from saved state.${NC}"; exit 1' INT
 
 # Parse arguments
@@ -95,33 +123,35 @@ while [[ $# -gt 0 ]]; do
     shift
 done
 
-# Validate
+# Validate output folder
 if [ -z "$output_dir" ]; then
     echo -e "${RED}[!] Output folder (-o) is required.${NC}"
     exit 1
 fi
+
 mkdir -p "$output_dir"
 
+# Start processing
 check_dependencies
 
-# Start process
 if [ -n "$domain" ]; then
     run_gauplus "$domain"
     run_katana "$domain"
 elif [ -n "$list" ]; then
     while read -r dom; do
+        [ -z "$dom" ] && continue
         run_gauplus "$dom"
         run_katana "$dom"
     done < "$list"
 fi
 
 if [ -n "$cariddi_url" ]; then
-    echo "$cariddi_url" > "$output_dir/tmp_single_url.txt"
-    run_cariddi "$output_dir/tmp_single_url.txt" "$output_dir/cariddi_url.txt" "cariddi_url"
+    echo "$cariddi_url" > "$output_dir/tmp_url.txt"
+    run_cariddi "$output_dir/tmp_url.txt" "$output_dir/cariddi_url.txt" "cariddi_url"
 elif [ -n "$cariddi_list" ]; then
     run_cariddi "$cariddi_list" "$output_dir/cariddi_list.txt" "cariddi_list"
 fi
 
 merge_outputs
 
-echo -e "${GREEN}[*] Done. All output saved to $output_dir${NC}"
+echo -e "${GREEN}[*] Done. All output saved to: $output_dir${NC}"
