@@ -6,7 +6,7 @@ RED="\e[0;31m"
 NC="\e[0m"
 
 # Required tools
-REQUIRED_TOOLS=(gauplus katana cariddi)
+REQUIRED_TOOLS=(gau gauplus katana cariddi uro)
 
 # Check and install Go if missing
 check_go() {
@@ -16,7 +16,7 @@ check_go() {
     fi
 }
 
-# Install dependencies if missing
+# Install dependencies
 check_dependencies() {
     check_go
     for tool in "${REQUIRED_TOOLS[@]}"; do
@@ -24,6 +24,9 @@ check_dependencies() {
             echo -e "${RED}[!] $tool is not installed.${NC}"
             echo -e "${GREEN}[+] Installing $tool...${NC}"
             case "$tool" in
+                gau)
+                    go install github.com/lc/gau@latest
+                    ;;
                 gauplus)
                     go install github.com/bp0lr/gauplus@latest
                     ;;
@@ -32,6 +35,10 @@ check_dependencies() {
                     ;;
                 cariddi)
                     go install github.com/edoardottt/cariddi/cmd/cariddi@latest
+                    ;;
+                uro)
+                    pip3 install uro >/dev/null 2>&1 || { echo -e "${RED}[-] Failed to install uro. Please install manually.${NC}"; exit 1; }
+                    continue
                     ;;
                 *)
                     echo -e "${RED}[-] Unknown tool: $tool. Please install manually.${NC}"
@@ -66,25 +73,34 @@ load_marker() {
     grep -q "$1" "$output_dir/.resume_marker" 2>/dev/null
 }
 
-# Gauplus execution
+# GAU
+run_gau() {
+    if ! load_marker "gau-$1"; then
+        echo -e "${GREEN}[+] Running GAU for $1...${NC}"
+        gau "$1" > "$output_dir/gau_$1.txt" 2>/dev/null &
+        save_marker "gau-$1"
+    fi
+}
+
+# Gauplus
 run_gauplus() {
     if ! load_marker "gauplus-$1"; then
         echo -e "${GREEN}[+] Running Gauplus for $1...${NC}"
-        gauplus "$1" > "$output_dir/gauplus_$1.txt" 2>/dev/null
+        gauplus "$1" > "$output_dir/gauplus_$1.txt" 2>/dev/null &
         save_marker "gauplus-$1"
     fi
 }
 
-# Katana execution
+# Katana
 run_katana() {
     if ! load_marker "katana-$1"; then
         echo -e "${GREEN}[+] Running Katana for $1...${NC}"
-        echo "https://$1" | katana -silent > "$output_dir/katana_$1.txt" 2>/dev/null
+        echo "https://$1" | katana -silent > "$output_dir/katana_$1.txt" 2>/dev/null &
         save_marker "katana-$1"
     fi
 }
 
-# Cariddi execution
+# Cariddi
 run_cariddi() {
     local input=$1
     local output=$2
@@ -100,8 +116,15 @@ run_cariddi() {
 # Merge output files
 merge_outputs() {
     echo -e "${GREEN}[+] Merging all output files...${NC}"
-    find "$output_dir" -type f -name "*.txt" ! -name "merged_urls.txt" ! -name ".resume_marker" -exec cat {} + | sort -u > "$output_dir/merged_urls.txt"
+    find "$output_dir" -type f -name "*.txt" ! -name "merged_urls.txt" ! -name "unique_urls.txt" ! -name ".resume_marker" -exec cat {} + | sort -u > "$output_dir/merged_urls.txt"
     echo -e "${GREEN}[+] Merged output saved to $output_dir/merged_urls.txt${NC}"
+}
+
+# Run uro
+run_uro() {
+    echo -e "${GREEN}[+] Running uro on merged URLs...${NC}"
+    uro "$output_dir/merged_urls.txt" > "$output_dir/unique_urls.txt"
+    echo -e "${GREEN}[+] Cleaned URLs saved to $output_dir/unique_urls.txt${NC}"
 }
 
 # Trap CTRL+C
@@ -136,18 +159,22 @@ fi
 
 mkdir -p "$output_dir"
 
-# Start processing
+# Start
 check_dependencies
 
 if [ -n "$domain" ]; then
+    run_gau "$domain"
     run_gauplus "$domain"
     run_katana "$domain"
+    wait
 elif [ -n "$list" ]; then
     while read -r dom; do
         [ -z "$dom" ] && continue
+        run_gau "$dom"
         run_gauplus "$dom"
         run_katana "$dom"
     done < "$list"
+    wait
 fi
 
 if [ -n "$cariddi_url" ]; then
@@ -158,5 +185,6 @@ elif [ -n "$cariddi_list" ]; then
 fi
 
 merge_outputs
+run_uro
 
 echo -e "${GREEN}[*] Done. All output saved to: $output_dir${NC}"
